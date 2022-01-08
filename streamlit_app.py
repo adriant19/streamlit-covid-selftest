@@ -47,6 +47,7 @@ def connect_to_gsheet():
 
 # -- update data ---------------------------------------------------------------
 
+@st.cache(allow_output_mutation=True)
 def get_data(conn) -> pd.DataFrame:
 
     values = (
