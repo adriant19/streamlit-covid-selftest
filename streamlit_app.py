@@ -42,12 +42,11 @@ def connect_to_gsheet():
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
 
-    return build("sheets", "v4", credentials=credentials).spreadsheets()
+    return build("sheets", "v4", credentials=credentials, cache_discovery=False).spreadsheets()
 
 
 # -- update data ---------------------------------------------------------------
 
-@st.cache(ttl=600)
 def get_data(conn) -> pd.DataFrame:
 
     values = (
@@ -92,16 +91,21 @@ def get_weeks(conn) -> pd.DataFrame:
     return df, active_weeks
 
 
-def get_names(conn) -> list:
+def get_users(conn) -> list:
 
     values = (
         conn.values().get(
             spreadsheetId=SPREADSHEET_ID,
-            range=f"Members!A:A",
+            range=f"Members!A:C",
         ).execute()
     )
 
-    return pd.DataFrame(values["values"])[0].values[1:]
+    user_df = pd.DataFrame(values["values"]).fillna("")
+    user_df.columns = user_df.iloc[0]
+
+    user_df = user_df[1:]
+
+    return user_df
 
 
 def add_entry(conn, row) -> None:
@@ -121,112 +125,133 @@ def update_entry(conn, row) -> None:
     pass
 
 
-def get_graph(df):
+# def get_graph(df):
 
-    fig = (
-        alt.Chart(df, title="weekly self test reporting")
-        .mark_bar()
-        .encode(x="Employee", y="Days")
-        .interactive()
-    )
+#     fig = (
+#         alt.Chart(df, title="weekly self test reporting")
+#         .mark_bar()
+#         .encode(x="Employee", y="Days")
+#         .interactive()
+#     )
 
-    return fig
+#     return fig
 
-# -- connection setup ----------------------------------------------------------
 
+# -- connection setup & inputs -------------------------------------------------
 
 conn = connect_to_gsheet()
+users = get_users(conn)
+user_dict = users.set_index("Username").to_dict("index")
+weeks, active_weeks = get_weeks(conn)
 
 # -- page setup# ---------------------------------------------------------------
-
-weeks, active_weeks = get_weeks(conn)
 
 header1, header2 = st.columns((1, 3))
 
 header1.write("__")
 header1.image(Image.open("shopee_logo_en_email.png"), width=200)
 
-header2.title("Marketing Analytics", anchor="top")
 header2.markdown(f"""
-This app receives the team's self reported test kit results for covid-19 for tracking purposes.
+# Marketing Analytics
+This app receives the team's self reported test kit results for covid-19 per week.
+\n*now*: `{datetime.datetime.now(tz)}`
 """)
 st.write("***")
 
 with st.sidebar:
 
-    st.header("User Input Function")
-    st.write("*now:*", datetime.datetime.now(tz))
+    st.subheader("User Login")
 
-    user = st.radio("Selected user", get_names(conn))
+    # -- perform login
 
-    with st.form(key="annotation"):
+    username = st.text_input("Username")
+    pwd = st.text_input("Password")
 
-        # fields needed
+    current_user = user_dict.get(username)
 
-        week = st.selectbox(
-            "Week Number",
-            active_weeks.tolist(),
-            index=0,
-            help="week to report self test"
-        )
+    if current_user is None:
+        st.error("Incorrect username & password")
 
-        date = st.date_input(
-            "Self Test Date",
-            max_value=datetime.datetime.now(tz),
-            help="date of self test taken"
-        )
+    else:
+        if current_user["Password"] == pwd:
+            current_user_name = current_user['Name']
+            st.success(f"Logged in as {current_user_name}")
 
-        days = st.multiselect(
-            "Days in Week",
-            ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],  # options
-            ["Mon", "Tue", "Wed", "Thu", "Fri"],  # default
-            help="days in week where office visit will be undertaken"
-        )
+            with st.form(key="annotation"):
 
-        remark = st.text_area("Remark:", value="", help="any remarks to be given (if applicable)")
-        outcome = st.radio("COVID Test Result", ("Negative (C)", "Positive (T)"), index=0)
+                st.subheader("User Input Function")
 
-        submit = st.form_submit_button(label="Submit")
+                # fields needed
 
-    if submit:
+                week = st.selectbox(
+                    "Week Number",
+                    active_weeks.tolist(),
+                    index=0,
+                    help="week to report self test"
+                )
 
-        start_date, end_date = list(weeks.to_dict("index")[week].values())
+                date = st.date_input(
+                    "Self Test Date",
+                    max_value=datetime.datetime.now(tz),
+                    help="date of self test taken"
+                )
 
-        # add entry (or overwrite existing) upon submission
+                days = st.multiselect(
+                    "Days in Week",
+                    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],  # options
+                    ["Mon", "Tue", "Wed", "Thu", "Fri"],  # default
+                    help="days in week where office visit will be undertaken"
+                )
 
-        add_entry(
-            conn,
-            [[
-                datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M %p"),
-                week,
-                start_date,
-                end_date,
-                user,
-                str(date),
-                str(days),
-                remark,
-                outcome
-            ]]
-        )
+                remark = st.text_area("Remark:", value="", help="any remarks to be given (if applicable)")
+                outcome = st.radio("COVID Test Result", ("Negative (C)", "Positive (T)"), index=0)
 
-        st.success("☑️ Self test results submitted")
+                submit = st.form_submit_button(label="Submit")
+
+            if submit:
+
+                start_date, end_date = list(weeks.to_dict("index")[week].values())
+
+                # add entry (or overwrite existing) upon submission
+
+                add_entry(
+                    conn,
+                    [[
+                        datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M %p"),
+                        week,
+                        start_date,
+                        end_date,
+                        current_user_name,
+                        str(date),
+                        str(days),
+                        remark,
+                        outcome
+                    ]]
+                )
+
+                st.success("☑️ Self test results submitted")
+        else:
+            st.error("Incorrect username & password")
 
 # -- content setup -------------------------------------------------------------
 
-df = get_data(conn)
+if current_user is None:
+    pass
 
-days_col = df.apply(lambda x: pd.Series(x["Days"].strip("][").split(", ")), axis=1).fillna("")
+else:
+    if current_user["Password"] == pwd:
+        current_user_name = current_user['Name']
 
-df1 = pd.concat([
-    df,
-    days_col
-], axis=1)
+        df = get_data(conn)
 
-# st.pyplot(get_graph(df))
+        days_col = df.apply(lambda x: pd.Series(x["Days"].strip("][").split(", ")), axis=1).fillna("")
 
-st.write(f"""### Records *(Source: [Gsheet]({GSHEET_URL}))*""")
-st.table(df)
+        df1 = pd.concat([df, days_col], axis=1)
 
-with st.expander("Ref. Table: Week Number-Dates"):
+        # st.pyplot(get_graph(df))
 
-    st.write(weeks)
+        st.write(f"""### Records *(Source: [Gsheet]({GSHEET_URL}))*""")
+        st.table(df)
+
+        with st.expander("Ref. Table: Week Number-Dates"):
+            st.write(weeks)
