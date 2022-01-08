@@ -23,7 +23,7 @@ st.set_page_config(layout="wide", page_icon="☠️")
 
 # -- create connection ---------------------------------------------------------
 
-@st.experimental_singleton()
+@st.experimental_singleton
 def connect_to_gsheet():
 
     credentials = service_account.Credentials.from_service_account_info(
@@ -47,7 +47,6 @@ def connect_to_gsheet():
 
 # -- update data ---------------------------------------------------------------
 
-@st.cache(allow_output_mutation=True)
 def get_data(conn) -> pd.DataFrame:
 
     values = (
