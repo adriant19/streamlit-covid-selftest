@@ -41,8 +41,8 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache
-def get_weeks(conn) -> pd.DataFrame:
+@st.cache(hash_funcs={connection.connect_to_gsheet: })
+def get_weeks(conn):
     """ Read weeks list from dB
 
     :param conn: existing connection via google api v4
@@ -72,7 +72,7 @@ def get_weeks(conn) -> pd.DataFrame:
 
 
 @st.cache
-def get_users(conn) -> list:
+def get_users(conn):
     """ Usernames and password for authentication of users
 
     :param conn: existing connection via google api v4
@@ -165,17 +165,10 @@ df = get_data(connection.connect_to_gsheet())
 
 # -- header setup --------------------------------------------------------------
 
-header1, header2 = st.columns((1, 3))
-
-with header1:
-    st.text("___")
-    st.image(Image.open("shopee_logo_en_email.png"), width=200)
-
-with header2:
-    st.markdown(f"""# Marketing Analytics
-    \nThis app records the team's self reported test kit results for COVID-19 (per week).
-    \n*now*: `{datetime.datetime.now(tz)}`
-    """)
+st.markdown(f"""# Marketing Analytics
+\nThis app records the team's self reported test kit results for COVID-19 (per week).
+\n*now*: `{datetime.datetime.now(tz)}`
+""")
 
 st.write("***")
 
@@ -184,6 +177,7 @@ st.write("***")
 weeks_df, active_weeks = get_weeks(connection.connect_to_gsheet())
 
 with st.sidebar:
+    st.image(Image.open("shopee_logo_en_email.png"), width=100)
 
     # -- perform login -------------------------------------------------------------
 
