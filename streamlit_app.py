@@ -54,7 +54,7 @@ def get_weeks(conn) -> pd.DataFrame:
     values = (
         conn.values().get(
             spreadsheetId=config.SPREADSHEET_ID,
-            range=f"Weeks!{config.TAB_RANGE}",
+            range=f"Weeks!A:C",
         ).execute()
     )
 
@@ -163,7 +163,10 @@ with st.sidebar:
     current_user = get_users(conn).get(username)
 
     if current_user is None:
-        st.error("Incorrect username & password")
+        if username == "" and pwd == "":
+            st.info("Key in username & password")
+        else:
+            st.error("Incorrect username & password")
 
     else:
         verified = current_user["Password"] == pwd
