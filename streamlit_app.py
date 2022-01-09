@@ -38,7 +38,7 @@ def get_data(conn) -> pd.DataFrame:
     df = df[1:]
     df = df.astype({"Log Datetime": "datetime64[ns]", "Year": int, "Week": int})
 
-    return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True])
+    return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
 def get_weeks(conn) -> pd.DataFrame:
@@ -55,9 +55,9 @@ def get_weeks(conn) -> pd.DataFrame:
         ).execute()
     )
 
-    df = pd.DataFrame(values["values"])
-    df.columns = df.iloc[0]
-    df = df[1:].astype({
+    weeks_df = pd.DataFrame(values["values"])
+    weeks_df.columns = weeks_df.iloc[0]
+    weeks_df = weeks_df[1:].astype({
         "week_number": int,
         "start_date": "datetime64[ns]",
         "end_date": "datetime64[ns]"
@@ -65,9 +65,9 @@ def get_weeks(conn) -> pd.DataFrame:
 
     # get active weeks that can be selected
 
-    active_weeks = df[df["week_number"] <= curr_week].sort_values("week_number", ascending=False)["week_number"].values
+    active_weeks = weeks_df[weeks_df["week_number"] <= curr_week].sort_values("week_number", ascending=True)["week_number"].values
 
-    return df.set_index("week_number"), active_weeks
+    return weeks_df.set_index("week_number"), active_weeks
 
 
 def get_users(conn) -> list:
@@ -130,27 +130,38 @@ def get_graph(df, names):
 
     # unwrap data by days for visualisation
 
-    days_col = df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
+    df1 = pd.concat(
+        [
+            df[["Year", "Week", "Member", "Result"]],
+            df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
+        ],
+        axis=1
+    ).set_index(["Year", "Week", "Member", "Result"])
 
-    df1 = pd.concat([df[["Year", "Week", "Member", "Result"]], days_col], axis=1).set_index(["Year", "Week", "Member", "Result"])
     df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=4, drop=True).reset_index()
 
-    df3 = df2[(df2["Week"] == int(week)) & (df2["Days"] != "")]
+    plot_df = pd.merge(
+        names.rename("Member"),
+        df2[df2["Week"] == int(select_week)],
+        how="left", on="Member"
+    ).query("Days != ''").fillna(value={"Days": ""})
 
-    plot_df = pd.merge(names.rename("Member"), df3, how="left", on="Member")
-
-    plot_df["Legend"] = np.where(plot_df["Days"].isna(), "Unreported", plot_df["Result"])
+    plot_df["Legend"] = np.where(
+        (plot_df["Result"].isna()) & (plot_df["Days"] == ""),
+        "Untested",
+        plot_df["Result"]
+    )
 
     fig = (
-        alt.Chart(plot_df, title=f"Week {week} - Self Test Reporting")
+        alt.Chart(plot_df, title=f"Week {select_week} - Self Test Reporting")
+        .configure_axis(grid=True)
         .mark_circle(size=200)
         .encode(
             x="Member",
             y=alt.Y("Days", sort=["Mon", "Tue", "Wed", "Thu", "Fri"]),
-            color=alt.Color("Legend", scale=alt.Scale(range=["steelblue", "#D35400", "chartreuse"], domain=["Unreported", "Positive (T)", "Negative (C)"]))
+            color=alt.Color("Legend", scale=alt.Scale(range=["steelblue", "#D35400", "chartreuse"], domain=["Untested", "Positive (T)", "Negative (C)"]))
         )
         .properties(height=500)
-        .interactive()
     )
 
     return fig
@@ -178,7 +189,7 @@ weeks_df, active_weeks = get_weeks(connection.connect_to_gsheet())
 
 with st.sidebar:
 
-    # -- perform login
+    # -- perform login -------------------------------------------------------------
 
     st.subheader("🔒 User Login")
     username = st.text_input("Username")
@@ -202,7 +213,7 @@ with st.sidebar:
         if verified:
             st.success(f"Logged in as {current_user_name}")
 
-            #  --submission form -----------------------------------------------
+#  --submission form -----------------------------------------------------------
 
             with st.form(key="annotation"):
 
@@ -272,6 +283,14 @@ if current_user is None:
 
 else:
     if verified:
+
+        select_week = st.select_slider(
+            "Week Number",
+            range(1, 54),
+            # active_weeks.tolist(),
+            value=max(active_weeks),
+            help="filter graph by week number"
+        )
 
         st.altair_chart(
             get_graph(df, names=names),
