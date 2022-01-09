@@ -138,32 +138,22 @@ def get_graph(df, names):
     df3 = df2[(df2["Week"] == int(week)) & (df2["Days"] != "")]
 
     plot_df = pd.merge(names.rename("Member"), df3, how="left", on="Member")
-    plot_df["Days"].fillna("Unreported", inplace=True)
-    plot_df["Color"] = np.select(
-        [
-            plot_df["Days"] == "Unreported",
-            plot_df["Result"] == "Negative (C)",
-            plot_df["Result"] == "Positive (T)"
-        ],
-        [
-            "steelblue",
-            "chartreuse",
-            "#D35400"
-        ])
+
+    plot_df["Legend"] = np.where(plot_df["Days"].isna(), "Unreported", plot_df["Result"])
 
     fig = (
-        alt.Chart(plot_df)
+        alt.Chart(plot_df, title=f"Week {week} - Self Test Reporting")
         .mark_circle(size=200)
         .encode(
             x="Member",
             y=alt.Y("Days", sort=["Mon", "Tue", "Wed", "Thu", "Fri"]),
-            color=alt.Color("Color", scale=None)
+            color=alt.Color("Legend", scale=alt.Scale(range=["steelblue", "#D35400", "chartreuse"], domain=["Unreported", "Positive (T)", "Negative (C)"]))
         )
         .properties(height=500)
         .interactive()
     )
 
-    return alt.layer(fig, title=f"Week {week} - Self Test Reporting")
+    return fig
 
 
 # -- header setup --------------------------------------------------------------
@@ -257,8 +247,8 @@ with st.sidebar:
                         datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
                         str(date.year),
                         week,
-                        start_date,
-                        end_date,
+                        str(start_date.date()),
+                        str(end_date.date()),
                         current_user_name,
                         str(date),
                         ', '.join(days),
