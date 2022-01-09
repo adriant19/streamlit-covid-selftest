@@ -262,3 +262,8 @@ else:
 
         with st.expander("Ref. Table: Week Number-Dates"):
             st.dataframe(weeks_df)
+
+
+# -- fallback logic: rerun app in case of errors -------------------------------
+
+st.button("Rerun App", on_click=st.experimental_show)
