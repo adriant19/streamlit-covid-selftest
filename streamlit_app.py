@@ -14,7 +14,7 @@ import altair as alt
 st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
 
 tz = pytz.timezone("Asia/Kuala_Lumpur")
-curr_year, curr_week, _ = datetime.datetime.today().date().isocalendar()
+curr_year, curr_week, _ = datetime.datetime.now(tz).date().isocalendar()
 
 
 # -- update data ---------------------------------------------------------------
@@ -41,6 +41,7 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
+@st.cache
 def get_weeks(conn) -> pd.DataFrame:
     """ Read weeks list from dB
 
@@ -65,11 +66,12 @@ def get_weeks(conn) -> pd.DataFrame:
 
     # get active weeks that can be selected
 
-    active_weeks = weeks_df[weeks_df["week_number"] <= curr_week].sort_values("week_number", ascending=True)["week_number"].values
+    active_weeks = list(filter(lambda x: x <= curr_week, weeks_df["week_number"].tolist()))
 
-    return weeks_df.set_index("week_number"), active_weeks
+    return weeks_df.set_index("week_number"), sorted(active_weeks, reverse=True)
 
 
+@st.cache
 def get_users(conn) -> list:
     """ Usernames and password for authentication of users
 
@@ -98,17 +100,6 @@ def add_entry(conn, row) -> None:
     :param row: row details to be submitted into dB
     :return: extracted list of weeks and active weeks (less than current week)
     """
-
-    # if existing, then amend else append
-
-    check = get_data(conn)
-
-    check_dict = check.set_index(
-        check.apply(
-            lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}",
-            axis=1
-        )
-    ).to_dict("index")
 
     values = (
         conn.values().append(
@@ -159,12 +150,17 @@ def get_graph(df, names):
         .encode(
             x="Member",
             y=alt.Y("Days", sort=["Mon", "Tue", "Wed", "Thu", "Fri"]),
-            color=alt.Color("Legend", scale=alt.Scale(range=["steelblue", "#D35400", "chartreuse"], domain=["Untested", "Positive (T)", "Negative (C)"]))
+            color=alt.Color("Legend", scale=alt.Scale(range=["#FFC300", "#C70039", "chartreuse"], domain=["Untested", "Positive (T)", "Negative (C)"]))
         )
         .properties(height=500)
     )
 
     return fig
+
+
+# -- get data (regardless if authentication performed) -------------------------
+
+df = get_data(connection.connect_to_gsheet())
 
 
 # -- header setup --------------------------------------------------------------
@@ -216,14 +212,13 @@ with st.sidebar:
 #  --submission form -----------------------------------------------------------
 
             with st.form(key="annotation"):
-
                 st.subheader("User Input Function")
 
                 # fields needed
 
                 week = st.selectbox(
                     "Week Number",
-                    active_weeks.tolist(),
+                    active_weeks,
                     index=0,
                     help="week to report self test"
                 )
@@ -247,36 +242,40 @@ with st.sidebar:
                 submit = st.form_submit_button(label="Submit")
 
             if submit:
-
                 start_date, end_date = list(weeks_df.to_dict("index")[week].values())
 
                 # add entry (or overwrite existing) upon submission
 
-                add_entry(
-                    connection.connect_to_gsheet(),
-                    [[
-                        datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
-                        str(date.year),
-                        week,
-                        str(start_date.date()),
-                        str(end_date.date()),
-                        current_user_name,
-                        str(date),
-                        ', '.join(days),
-                        remark,
-                        outcome
-                    ]]
-                )
+                # if existing, then amend else append
+
+                checker = df.apply(lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}", axis=1).tolist()
+
+                if f"{date.year}-{week}-{current_user_name}" not in checker:
+                    add_entry(
+                        connection.connect_to_gsheet(),
+                        [[
+                            datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
+                            str(date.year),
+                            week,
+                            str(start_date.date()),
+                            str(end_date.date()),
+                            current_user_name,
+                            str(date),
+                            ', '.join(days),
+                            remark,
+                            outcome
+                        ]]
+                    )
+
+                else:
+                    pass
 
                 st.success("☑️ Self test results submitted")
+
         else:
             st.error("Incorrect username & password")
 
 # -- body setup ----------------------------------------------------------------
-
-# get data - regardless if authentication performed
-
-df = get_data(connection.connect_to_gsheet())
 
 if current_user is None:
     pass
@@ -311,6 +310,13 @@ else:
 
 
 # -- fallback logic: rerun app in case of errors -------------------------------
+
+with st.expander("Changelog"):
+    st.text("""
+    [Pending] logic to amend entry rows if a user is resubmitting for a given year and week
+    [Done] Only submits new entries if have not declared by user for a given year-week
+    [Done] Graph now captures users that have not declared status
+    """)
 
 if st.button("Rerun App"):
     st.experimental_show()
