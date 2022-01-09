@@ -12,7 +12,7 @@ import altair as alt
 # -- global variables, settings & connection setup -----------------------------
 
 st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
-conn = connection.connect_to_gsheet()
+
 tz = pytz.timezone("Asia/Kuala_Lumpur")
 curr_year, curr_week, _ = datetime.datetime.today().date().isocalendar()
 
@@ -184,7 +184,7 @@ st.write("***")
 
 # -- sidebar setup -------------------------------------------------------------
 
-weeks_df, active_weeks = get_weeks(conn)
+weeks_df, active_weeks = get_weeks(connection.connect_to_gsheet())
 
 with st.sidebar:
 
@@ -196,7 +196,7 @@ with st.sidebar:
 
     # verifies if existing user (gets name & password)
 
-    names, users = get_users(conn)
+    names, users = get_users(connection.connect_to_gsheet())
     current_user = users.get(username)
 
     if current_user is None:
@@ -252,7 +252,7 @@ with st.sidebar:
                 # add entry (or overwrite existing) upon submission
 
                 add_entry(
-                    conn,
+                    connection.connect_to_gsheet(),
                     [[
                         datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
                         str(date.year),
@@ -275,7 +275,7 @@ with st.sidebar:
 
 # get data - regardless if authentication performed
 
-df = get_data(conn)
+df = get_data(connection.connect_to_gsheet())
 
 if current_user is None:
     pass
