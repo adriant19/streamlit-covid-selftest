@@ -6,14 +6,14 @@ from PIL import Image
 import datetime
 import pytz
 import pandas as pd
+import numpy as np
 import altair as alt
 
-# -- settings & connection setup -----------------------------------------------
+# -- global variables, settings & connection setup -----------------------------
 
 st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
 conn = connection.connect_to_gsheet()
 tz = pytz.timezone("Asia/Kuala_Lumpur")
-
 curr_year, curr_week, _ = datetime.datetime.today().date().isocalendar()
 
 
@@ -23,7 +23,6 @@ def get_data(conn) -> pd.DataFrame:
     """ Read data from dB
 
     :param conn: existing connection via google api v4
-
     :return: extracted dataframe, sorted by year, week, log datetime
     """
 
@@ -37,8 +36,7 @@ def get_data(conn) -> pd.DataFrame:
     df = pd.DataFrame(values["values"]).fillna("")
     df.columns = df.iloc[0]
     df = df[1:]
-
-    df["Log Datetime"] = pd.to_datetime(df["Log Datetime"])
+    df = df.astype({"Log Datetime": "datetime64[ns]", "Year": int, "Week": int})
 
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True])
 
@@ -47,7 +45,6 @@ def get_weeks(conn) -> pd.DataFrame:
     """ Read weeks list from dB
 
     :param conn: existing connection via google api v4
-
     :return: extracted list of weeks and active weeks (less than current week)
     """
 
@@ -62,7 +59,7 @@ def get_weeks(conn) -> pd.DataFrame:
     df.columns = df.iloc[0]
     df = df[1:]
 
-    # get active weeks
+    # get active weeks that can be selected
 
     active_weeks = df[
         df["week_number"].astype(int) <= curr_week
@@ -89,9 +86,7 @@ def get_users(conn) -> list:
     user_df = pd.DataFrame(values["values"]).fillna("")
     user_df.columns = user_df.iloc[0]
 
-    user_df = user_df[1:]
-
-    return user_df.set_index("Username").to_dict("index")
+    return user_df[1:]["Name"], user_df[1:].set_index("Username").to_dict("index")  # exclude header row
 
 
 def add_entry(conn, row) -> None:
@@ -99,9 +94,19 @@ def add_entry(conn, row) -> None:
 
     :param conn: existing connection via google api v4
     :param row: row details to be submitted into dB
-
     :return: extracted list of weeks and active weeks (less than current week)
     """
+
+    # if existing, then amend else append
+
+    check = get_data(conn)
+
+    check_dict = check.set_index(
+        check.apply(
+            lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}",
+            axis=1
+        )
+    ).to_dict("index")
 
     values = (
         conn.values().append(
@@ -113,17 +118,35 @@ def add_entry(conn, row) -> None:
     )
 
 
-def update_entry(conn, row) -> None:
-
-    pass
-
-
 def get_graph(df, names):
+    """ Generate altair graph
+
+    :param df: base data points for plot
+    :param names: list of names to plot against
+    :return: figure of altair graph
+    """
+
+    # unwrap data by days for visualisation
+
+    days_col = df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
+
+    df1 = pd.concat([df[["Year", "Week", "Member"]], days_col], axis=1).set_index(["Year", "Week", "Member"])
+    df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=3, drop=True).reset_index()
+
+    df3 = df2[(df2["Week"] == int(week)) & (df2["Days"] != "")]
+
+    plot_df = pd.merge(names.rename("Member"), df3, how="left", on="Member")
+    plot_df["Days"].fillna("Unreported", inplace=True)
+    plot_df["Color"] = np.where(plot_df["Days"] == "Unreported", "red", "steelblue")
 
     fig = (
-        alt.Chart(df, title="Weekly Self Test Reporting")
+        alt.Chart(plot_df, title=f"Week {week} - Self Test Reporting")
         .mark_circle(size=100)
-        .encode(x="Member", y="Days")
+        .encode(
+            x="Member",
+            y=alt.Y("Days", sort=["Mon", "Tue", "Wed", "Thu", "Fri"]),
+            color=alt.Color("Color", scale=None)
+        )
         .properties(height=500)
         .interactive()
     )
@@ -161,7 +184,7 @@ with st.sidebar:
 
     # verifies if existing user (gets name & password)
 
-    users = get_users(conn)
+    names, users = get_users(conn)
     current_user = users.get(username)
 
     if current_user is None:
@@ -226,7 +249,7 @@ with st.sidebar:
                         end_date,
                         current_user_name,
                         str(date),
-                        str(days),
+                        ', '.join(days),
                         remark,
                         outcome
                     ]]
@@ -238,39 +261,29 @@ with st.sidebar:
 
 # -- body setup ----------------------------------------------------------------
 
+# get data - regardless if authentication performed
+
+df = get_data(conn)
+
 if current_user is None:
     pass
 
 else:
     if verified:
 
-        # get data and style
-        # style table: create non-current week as opague
-
-        df = get_data(conn).astype({"Log Datetime": str})
-
-        df_style = df.style.apply(
-            lambda s: (df["Week"] != str(datetime.datetime.today().date().isocalendar()[1]))
-            .map({True: "opacity: 20%;", False: ""})
-        )
-
-        # unwrap data by days for visualisation
-
-        days_col = df.apply(lambda x: pd.Series(x["Days"].strip("][").split(", ")), axis=1).fillna("")
-
-        df1 = pd.concat([df[["Year", "Week", "Member"]], days_col], axis=1).set_index(["Year", "Week", "Member"])
-        df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=3, drop=True).reset_index()
-
         st.altair_chart(
-            get_graph(
-                df2[(df2["Week"] == str(week)) & (df2["Days"] != "")],
-                [n["Name"] for n in users.values()]
-            ),
+            get_graph(df, names=names),
             use_container_width=True
         )
 
         st.write(f"""### Records *(Source: [Gsheet]({config.GSHEET_URL}))*""")
-        st.dataframe(df_style)
+
+        # style table: create non-current week as opague
+
+        st.dataframe(df.style.apply(
+            lambda s: ((df["Year"] != curr_year) & (df["Week"] != curr_week))
+            .map({True: "opacity: 20%;", False: ""})
+        ))
 
         with st.expander("Ref. Table: Week Number-Dates"):
             st.dataframe(weeks_df)
@@ -278,4 +291,5 @@ else:
 
 # -- fallback logic: rerun app in case of errors -------------------------------
 
-st.button("Rerun App", on_click=st.experimental_show)
+if st.button("Rerun App"):
+    st.experimental_show()
