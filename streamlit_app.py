@@ -118,16 +118,17 @@ def update_entry(conn, row) -> None:
     pass
 
 
-# def get_graph(df):
+def get_graph(df, names):
 
-#     fig = (
-#         alt.Chart(df, title="weekly self test reporting")
-#         .mark_bar()
-#         .encode(x="Employee", y="Days")
-#         .interactive()
-#     )
+    fig = (
+        alt.Chart(df, title="Weekly Self Test Reporting")
+        .mark_circle(size=100)
+        .encode(x="Member", y="Days")
+        .properties(height=500)
+        .interactive()
+    )
 
-#     return fig
+    return alt.layer(fig)
 
 
 # -- header setup --------------------------------------------------------------
@@ -160,7 +161,8 @@ with st.sidebar:
 
     # verifies if existing user (gets name & password)
 
-    current_user = get_users(conn).get(username)
+    users = get_users(conn)
+    current_user = users.get(username)
 
     if current_user is None:
         if username == "" and pwd == "":
@@ -256,9 +258,16 @@ else:
 
         days_col = df.apply(lambda x: pd.Series(x["Days"].strip("][").split(", ")), axis=1).fillna("")
 
-        df1 = pd.concat([df, days_col], axis=1)
+        df1 = pd.concat([df[["Year", "Week", "Member"]], days_col], axis=1).set_index(["Year", "Week", "Member"])
+        df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=3, drop=True).reset_index()
 
-        # st.pyplot(get_graph(df))
+        st.altair_chart(
+            get_graph(
+                df2[(df2["Week"] == str(week)) & (df2["Days"] != "")],
+                [n["Name"] for n in users.values()]
+            ),
+            use_container_width=True
+        )
 
         st.write(f"""### Records *(Source: [Gsheet]({config.GSHEET_URL}))*""")
         st.dataframe(df_style)
