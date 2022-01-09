@@ -41,7 +41,7 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache(ttl=60)
+@st.cache(hash_funcs={"MyUnhashableClass": lambda _: None})
 def get_weeks(conn):
     """ Read weeks list from dB
 
@@ -71,7 +71,7 @@ def get_weeks(conn):
     return weeks_df.set_index("week_number"), sorted(active_weeks, reverse=True)
 
 
-@st.cache(ttl=60)
+@st.cache(hash_funcs={"MyUnhashableClass": lambda _: None})
 def get_users(conn):
     """ Usernames and password for authentication of users
 
