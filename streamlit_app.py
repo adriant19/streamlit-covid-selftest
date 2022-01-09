@@ -57,13 +57,15 @@ def get_weeks(conn) -> pd.DataFrame:
 
     df = pd.DataFrame(values["values"])
     df.columns = df.iloc[0]
-    df = df[1:]
+    df = df[1:].astype({
+        "week_number": int,
+        "start_date": "datetime64[ns]",
+        "end_date": "datetime64[ns]"
+    })
 
     # get active weeks that can be selected
 
-    active_weeks = df[
-        df["week_number"].astype(int) <= curr_week
-    ].sort_values(["week_number"], ascending=[False])["week_number"].values
+    active_weeks = df[df["week_number"] <= curr_week].sort_values("week_number", ascending=False)["week_number"].values
 
     return df.set_index("week_number"), active_weeks
 
@@ -130,18 +132,28 @@ def get_graph(df, names):
 
     days_col = df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
 
-    df1 = pd.concat([df[["Year", "Week", "Member"]], days_col], axis=1).set_index(["Year", "Week", "Member"])
-    df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=3, drop=True).reset_index()
+    df1 = pd.concat([df[["Year", "Week", "Member", "Result"]], days_col], axis=1).set_index(["Year", "Week", "Member", "Result"])
+    df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=4, drop=True).reset_index()
 
     df3 = df2[(df2["Week"] == int(week)) & (df2["Days"] != "")]
 
     plot_df = pd.merge(names.rename("Member"), df3, how="left", on="Member")
     plot_df["Days"].fillna("Unreported", inplace=True)
-    plot_df["Color"] = np.where(plot_df["Days"] == "Unreported", "red", "steelblue")
+    plot_df["Color"] = np.select(
+        [
+            plot_df["Days"] == "Unreported",
+            plot_df["Result"] == "Negative (C)",
+            plot_df["Result"] == "Positive (T)"
+        ],
+        [
+            "steelblue",
+            "chartreuse",
+            "#D35400"
+        ])
 
     fig = (
-        alt.Chart(plot_df, title=f"Week {week} - Self Test Reporting")
-        .mark_circle(size=100)
+        alt.Chart(plot_df)
+        .mark_circle(size=200)
         .encode(
             x="Member",
             y=alt.Y("Days", sort=["Mon", "Tue", "Wed", "Thu", "Fri"]),
@@ -151,7 +163,7 @@ def get_graph(df, names):
         .interactive()
     )
 
-    return alt.layer(fig)
+    return alt.layer(fig, title=f"Week {week} - Self Test Reporting")
 
 
 # -- header setup --------------------------------------------------------------
