@@ -43,7 +43,7 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache(hash_funcs={Resource: id})
+@st.cache(hash_funcs={Resource: id})  # pulled once only
 def get_weeks(conn):
     """ Read weeks list from dB
 
@@ -73,7 +73,7 @@ def get_weeks(conn):
     return weeks_df.set_index("week_number"), sorted(active_weeks, reverse=True)
 
 
-@st.cache(hash_funcs={Resource: id})
+@st.cache(hash_funcs={Resource: id})  # pulled once only
 def get_users(conn):
     """ Usernames and password for authentication of users
 
