@@ -9,6 +9,8 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
+from googleapiclient.discovery import Resource
+
 # -- global variables, settings & connection setup -----------------------------
 
 st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
@@ -41,7 +43,7 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache(hash_funcs={"MyUnhashableClass": lambda _: None})
+@st.cache(hash_funcs={Resource: id})
 def get_weeks(conn):
     """ Read weeks list from dB
 
@@ -71,7 +73,7 @@ def get_weeks(conn):
     return weeks_df.set_index("week_number"), sorted(active_weeks, reverse=True)
 
 
-@st.cache(hash_funcs={"MyUnhashableClass": lambda _: None})
+@st.cache(hash_funcs={Resource: id})
 def get_users(conn):
     """ Usernames and password for authentication of users
 
