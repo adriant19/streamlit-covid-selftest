@@ -41,7 +41,7 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache(hash_funcs={connection.connect_to_gsheet: })
+@st.cache
 def get_weeks(conn):
     """ Read weeks list from dB
 
