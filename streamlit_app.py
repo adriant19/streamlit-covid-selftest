@@ -11,7 +11,6 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
-
 # -- global variables, settings & connection setup -----------------------------
 
 st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
@@ -24,18 +23,7 @@ curr_year, curr_week, _ = datetime.datetime.now(tz).date().isocalendar()
 def connect_to_gsheet():
 
     credentials = service_account.Credentials.from_service_account_info(
-        {
-            "type": "service_account",
-            "project_id": "python2gsheet-281805",
-            "private_key_id": "7d14a14b62c1979817a8bad11cd4fa925469c3a8",
-            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9R/LBvcQi6iNM\ne9aIx+OdC3gnAyjH6Ij0LpuJrjx5U+wQQou0k4tBk3BTOJUvoBsim/jAUdkuqYF/\nBqxUJ83SLt7ZyF2e3+ony0uK/PUz0InTqG7j8FaM1nhUtSbG4bWyRSL2SlrQ4qlx\nMkamM6svlyt/vF8aBPmqxDW5F8h5MHtcRNqV323nBNe12rdcxfIFdt+wDgGgYY8g\nJ+gvQxXBJqxNTgVgCCpF7VGAnQ4B6QTWphXqGq6Z3G6s8Aa1i7YzGyoc/gJOP64L\nfvb24fKJC2Cxn+yn4vvJdKFcZMXE4mEQtVhOG0gP3BHx5pAXo6QrXztN4L1XeBwK\nqFdkIRw9AgMBAAECggEAW1UHPxMZPBusUrCCsVd6bgHlxTVSDTwYMXL33DR1u7mR\n87qYfNag4FCLZ6yq1+MylL2cBvi3ijuCX8/RgX3/Y4b4Qy/adNnou7Dtz7AFhS4A\nA2CHuXbz3Ft0jrMmddrdeJrBpwPz1E06o4M18eaGmJ0iAS3c2cpCynKI1bozIr47\nn2V/4SClfeBIxA8WZ+8UKR259CR+z6Qwxxd5t8tKAO5EQ1lVJVARipkFimwo8LsA\n6hWJDSlQTM3bEv6y2/FdqSnuTJyLDs0hSJdgkVSoIdqYOEHFC6NGp2dmLGhfPUOI\ndPj+x6PbJGYUOzdOt2kwe5OdxyIHYHxvcbEZU+lJZQKBgQDy+Ln8yn3+mKZ5yh6F\nWB2mikX0GYLY7BLyb4wSg8/kVjgHCDclVNeXQ7ZzDGvs3zgAz46rFLnNb8soEnd5\nabPWVLrFAg9PDm/oxs6I8ibmWRWqdUlYOQTXih9SxILdavdEmJ8cO5dS6TxvZlhe\n8N2f07EG70b0F3mJozz8k87swwKBgQDHbjYOmKzOSPA9hTdtcCTTQVesGNv5ucu0\n3EHGcK1w3hINnUBRyV1RjVph2rjk3ci63n1SHuwE42TDrZokDRxCYpPJ6Zm5yZwK\nW0MHEFqSQC1TlB3N9JvatBm4auZvkCjEkL/ytPfghZScroPWq/eqsCmAmPxyy5nE\n1Duj9JNC/wKBgFPEw0LPgX78nDDTKZCpn5dihtmwzfcB9UpWgQGFJnC/9RMflvus\n86N4OfgSaUdCcml9JeAABks45t8K9twKQHF9xuLTYfnMrXKg0GZQrm6uehTJ2R6s\nkenJ+iCsFb5G+bdRs1GljfeM6EQ0EfWxr4dCEf+lEV5olYOJnyYpw6bHAoGBAKnw\nAwY7GP2K75QswUdzCR4vDusqH8BTjv7ltPLIrzJ/OPj654UJxogooDzEKUt0pYh+\n8GEa0llz/zgy5ScVOOBkqbSjZwgGgP3eOGZ7jAIVx8nxa9hFOM2LLGOWTBgCyop9\nIeNKS/K5QSKmHte9oASFqkfXlT6oubYcd1nFnfq3AoGAfiCzN7UnjcwaRmlbEgA2\nCUJWVGaNAWBaMSmsOnrttBToVFncpvHUqbxvGyfoJyT5x1hqXz25u7thfkIKuldV\nlaGvQPdRCl6027tkFRC5Al2wIN5E0DTMX2Y6qJbr0AzJEIcMrY1zUsDYTMx+hjXz\nPiD+cxO2RHRU7t56HbzYNQk=\n-----END PRIVATE KEY-----\n",
-            "client_email": "py2gsheet@python2gsheet-281805.iam.gserviceaccount.com",
-            "client_id": "114526794528970901942",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/py2gsheet%40python2gsheet-281805.iam.gserviceaccount.com"
-        },
+        st.secrets["gcp_service_account"],
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
 
@@ -66,28 +54,19 @@ def get_data(conn) -> pd.DataFrame:
     return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
 
 
-@st.cache(hash_funcs={Resource: hash})  # pulled once only
-def get_weeks(conn):
-    """ Read weeks list from dB
+@st.cache  # pulled once only
+def get_weeks() -> tuple:
+    """ Prepare weeks table
 
-    :param conn: existing connection via google api v4
-    :return: extracted list of weeks and active weeks (less than current week)
+    :return: list of weeks and active weeks (less than current week)
     """
 
-    values = (
-        conn.values().get(
-            spreadsheetId=config.SPREADSHEET_ID,
-            range=f"Weeks!A:C",
-        ).execute()
-    )
+    weeks_df = pd.concat([
+        pd.DataFrame(pd.date_range("2022-01-01", "2022-12-31", freq="W-MON"), columns=["start_date"]),
+        pd.DataFrame(pd.date_range("2022-01-01", "2022-12-31", freq="W-MON"), columns=["end_date"]) + pd.DateOffset(days=6)
+    ], axis=1)
 
-    weeks_df = pd.DataFrame(values["values"])
-    weeks_df.columns = weeks_df.iloc[0]
-    weeks_df = weeks_df[1:].astype({
-        "week_number": int,
-        "start_date": "datetime64[ns]",
-        "end_date": "datetime64[ns]"
-    })
+    weeks_df.insert(0, "week_number", weeks_df["start_date"].dt.isocalendar().week)
 
     # get active weeks that can be selected
 
@@ -101,7 +80,6 @@ def get_users(conn):
     """ Usernames and password for authentication of users
 
     :param conn: existing connection via google api v4
-
     :return: extracted list of users with username, name and password
     """
 
@@ -146,26 +124,22 @@ def get_graph(df, names):
 
     # unwrap data by days for visualisation
 
-    df1 = pd.concat(
-        [
-            df[["Year", "Week", "Member", "Result"]],
-            df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
-        ],
-        axis=1
-    ).set_index(["Year", "Week", "Member", "Result"])
+    df1 = pd.concat([
+        df[["Year", "Week", "Member", "Result"]],
+        df.apply(lambda x: pd.Series(x["Days"].split(", ")), axis=1).fillna("")
+    ], axis=1).set_index(["Year", "Week", "Member", "Result"])
 
     df2 = pd.DataFrame(df1.stack()).rename(columns={0: "Days"}).reset_index(level=4, drop=True).reset_index()
 
     plot_df = pd.merge(
         names.rename("Member"),
-        df2[df2["Week"] == int(select_week)],
+        df2[(df2["Week"] == int(select_week)) & (df2["Year"] == int(select_year))],
         how="left", on="Member"
     ).query("Days != ''").fillna(value={"Days": ""})
 
     plot_df["Legend"] = np.where(
         (plot_df["Result"].isna()) & (plot_df["Days"] == ""),
-        "Untested",
-        plot_df["Result"]
+        "Untested", plot_df["Result"]
     )
 
     fig = (
@@ -186,46 +160,56 @@ def get_graph(df, names):
 # -- get data (regardless if authentication performed) -------------------------
 
 df = get_data(connect_to_gsheet())
-
+names, users = get_users(connect_to_gsheet())
+weeks_df, active_weeks = get_weeks()
 
 # -- header setup --------------------------------------------------------------
 
-st.markdown(f"""# Marketing Analytics
-\nThis app records the team's self reported test kit results for COVID-19 (per week).
-\n*now*: `{datetime.datetime.now(tz)}`
-""")
+st.subheader("""COVID-19 self-test declaration tracker""")
+
+with st.expander("Description"):
+    st.write(
+        """
+        **Streamlit dashboard by Adrian Tan**\n
+        *! login using username: 'admin' and password: 'admin' for preview purposes.*
+        
+        - This app records the team's self reported test kit results for COVID-19 (per week).
+        - Each year-week only can have one entry for each uniq. user.
+        - Note: feature to resubmit as an amendment was not implemented.
+        ***
+        """
+    )
+
+    st.text(
+        """
+        Changelog
+        ---
+        [Pending] logic to amend entry rows if a user is resubmitting for a given year and week
+        [Done] Only submits new entries if have not declared by user for a given year-week
+        [Done] Graph now captures users that have not declared status
+        """
+    )
 
 st.write("***")
 
 # -- sidebar setup -------------------------------------------------------------
 
-weeks_df, active_weeks = get_weeks(connect_to_gsheet())
-
 with st.sidebar:
-    st.image(Image.open("shopee_logo_en_email.png"), width=100)
 
     # -- perform login -------------------------------------------------------------
 
-    st.subheader("🔒 User Login")
-    username = st.text_input("Username")
-    pwd = st.text_input("Password")
+    with st.expander("🔒 User Login", expanded=True):
+        username = st.text_input("Username")
+        password = st.text_input("Password")
 
-    # verifies if existing user (gets name & password)
+    current_user = users.get(username)  # verifies if existing user
 
-    names, users = get_users(connect_to_gsheet())
-    current_user = users.get(username)
-
-    if current_user is None:
-        if username == "" and pwd == "":
-            st.info("Key in username & password")
-        else:
-            st.error("Incorrect username & password")
+    if username == "" and password == "":
+        st.info("Key in username & password")
 
     else:
-        verified = current_user["Password"] == pwd
-        current_user_name = current_user['Name']
-
-        if verified:
+        if current_user["Password"] if current_user is not None else None == password:
+            current_user_name = current_user["Name"]
             st.success(f"Logged in as {current_user_name}")
 
 #  --submission form -----------------------------------------------------------
@@ -235,18 +219,22 @@ with st.sidebar:
 
                 # fields needed
 
-                week = st.selectbox(
-                    "Week Number",
-                    active_weeks,
-                    index=0,
-                    help="week to report self test"
-                )
+                col1, col2 = st.columns(2)
 
-                date = st.date_input(
-                    "Self Test Date",
-                    max_value=datetime.datetime.now(tz),
-                    help="date of self test taken"
-                )
+                with col1:
+                    week = st.selectbox(
+                        "Week Number",
+                        active_weeks,
+                        index=0,
+                        help="week to report self test"
+                    )
+
+                with col2:
+                    date = st.date_input(
+                        "Self Test Date",
+                        max_value=datetime.datetime.now(tz).date(),
+                        help="date of self test taken"
+                    )
 
                 days = st.multiselect(
                     "Days in Office",
@@ -257,7 +245,6 @@ with st.sidebar:
 
                 remark = st.text_area("Remark:", value="", help="any remarks to be given (if applicable)")
                 outcome = st.radio("COVID Test Result", ("Negative (C)", "Positive (T)"), index=0)
-
                 submit = st.form_submit_button(label="Submit")
 
             if submit:
@@ -267,7 +254,7 @@ with st.sidebar:
 
                 # if existing, then amend else append
 
-                checker = df.apply(lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}", axis=1).tolist()
+                checker = df.apply(lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}", axis=1).tolist() if not df.empty else [None]
 
                 if f"{date.year}-{week}-{current_user_name}" not in checker:
                     add_entry(
@@ -275,7 +262,7 @@ with st.sidebar:
                         [[
                             datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
                             str(date.year),
-                            week,
+                            str(week),
                             str(start_date.date()),
                             str(end_date.date()),
                             current_user_name,
@@ -300,42 +287,44 @@ if current_user is None:
     pass
 
 else:
-    if verified:
+    if current_user["Password"] == password:
 
-        select_week = st.select_slider(
-            "Week Number",
-            range(1, 54),
-            # active_weeks.tolist(),
-            value=max(active_weeks),
-            help="filter graph by week number"
-        )
+        col1, col2, col3 = st.columns((4, 1, 1))
 
-        st.altair_chart(
-            get_graph(df, names=names),
-            use_container_width=True
-        )
+        with col1:
+            select_week = st.select_slider(
+                "Week Number",
+                weeks_df.index.tolist(),
+                value=max(active_weeks),
+                help="filter graph by week number"
+            )
+
+        with col2:
+            select_year = st.selectbox("Year", [2021, curr_year], index=1)
+
+        with col3:
+            st.write("")
+            st.write("")
+            if st.button("Refresh"):
+                st.experimental_show()
+
+        if df.empty:
+            pass
+        else:
+
+            st.altair_chart(
+                get_graph(df, names=names),
+                use_container_width=True
+            )
 
         st.write(f"""### Records *(Source: [Gsheet]({config.GSHEET_URL}))*""")
 
         # style table: create non-current week as opague
 
         st.dataframe(df.style.apply(
-            lambda s: ((df["Year"] != curr_year) & (df["Week"] != curr_week))
+            lambda s: ((df["Year"] <= curr_year) & (df["Week"] < curr_week))
             .map({True: "opacity: 20%;", False: ""})
         ))
 
         with st.expander("Ref. Table: Week Number-Dates"):
             st.dataframe(weeks_df)
-
-
-# -- fallback logic: rerun app in case of errors -------------------------------
-
-with st.expander("Changelog"):
-    st.text("""
-    [Pending] logic to amend entry rows if a user is resubmitting for a given year and week
-    [Done] Only submits new entries if have not declared by user for a given year-week
-    [Done] Graph now captures users that have not declared status
-    """)
-
-if st.button("Rerun App"):
-    st.experimental_show()
