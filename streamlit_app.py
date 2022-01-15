@@ -4,7 +4,6 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import config
 
-from PIL import Image
 import datetime
 import pytz
 import pandas as pd
@@ -23,7 +22,7 @@ curr_year, curr_week, _ = datetime.datetime.now(tz).date().isocalendar()
 def connect_to_gsheet():
 
     credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
+        st.secrets["gcp_service_account"],  # get secret keys from saved secrets
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
 
