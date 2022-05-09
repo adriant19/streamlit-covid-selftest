@@ -7,13 +7,13 @@ This app tracks weekly self tests by each individual and visualises the differen
 
 <br>
 
-#### Potential Improvements
+#### POTENTIAL IMPROVEMENTS
 
 - Logic to amend entry rows within the Gsheet for users that resubmits their current week's results and/or visit days
 
 <br>
 
-#### Visit the app in the link below
+#### VISIT APP IN THE LINK BELOW
 
 > Bypass the login using username: `admin` and password: `admin`
 
