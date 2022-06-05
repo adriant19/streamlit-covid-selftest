@@ -1,99 +1,59 @@
 import streamlit as st
 from googleapiclient.discovery import Resource
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import config
 
-import datetime
-import pytz
+import config
+from database import connect_to_gsheet
+from get_data import get_data, get_users, get_weeks
+
 import pandas as pd
 import numpy as np
 import altair as alt
 
-# -- global variables, settings & connection setup -----------------------------
 
-st.set_page_config(page_title="COVID Self Test Reporting", layout="wide", page_icon="☠️")
+st.set_page_config(
+    page_title="COVID Self Test Reporting",
+    layout="wide",
+    page_icon="☠️"
+)
 
-tz = pytz.timezone("Asia/Kuala_Lumpur")
-curr_year, curr_week, _ = datetime.datetime.now(tz).date().isocalendar()
+
+# -- Setup ---------------------------------------------------------------------
+
+df = get_data(connect_to_gsheet())
+names, users = get_users(connect_to_gsheet())
+weeks_df, active_weeks = get_weeks()
 
 
-@st.experimental_singleton
-def connect_to_gsheet():
+st.markdown("# COVID-19 Self-test Declaration Tracker")
 
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],  # get secret keys from saved secrets
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+with st.expander("Description"):
+
+    st.write(
+        """
+        **Streamlit dashboard by Adrian Tan**\n
+        *! login using username: 'admin' and password: 'admin' for preview purposes.*
+        
+        - This app records the team's self reported test kit results for COVID-19 (per week).
+        - Each year-week only can have one entry for each uniq. user.
+        - Note: feature to resubmit as an amendment was not implemented.
+        ***
+        """
     )
 
-    return build("sheets", "v4", credentials=credentials, cache_discovery=False).spreadsheets()
-
-
-# -- update data ---------------------------------------------------------------
-
-def get_data(conn) -> pd.DataFrame:
-    """ Read data from dB
-
-    :param conn: existing connection via google api v4
-    :return: extracted dataframe, sorted by year, week, log datetime
-    """
-
-    values = (
-        conn.values().get(
-            spreadsheetId=config.SPREADSHEET_ID,
-            range=f"{config.SHEET_NAME}!{config.TAB_RANGE}",
-        ).execute()
+    st.text(
+        """
+        Changelog
+        ---
+        [Pending] logic to amend entry rows if a user is resubmitting for a given year and week
+        [Done] Only submits new entries if have not declared by user for a given year-week
+        [Done] Graph now captures users that have not declared status
+        """
     )
 
-    df = pd.DataFrame(values["values"]).fillna("")
-    df.columns = df.iloc[0]
-    df = df[1:]
-    df = df.astype({"Log Datetime": "datetime64[ns]", "Year": int, "Week": int})
-
-    return df.sort_values(["Year", "Week", "Log Datetime"], ascending=[False, False, True]).reset_index(drop=True)
+st.write("***")
 
 
-@st.cache  # pulled once only
-def get_weeks() -> tuple:
-    """ Prepare weeks table
-
-    :return: list of weeks and active weeks (less than current week)
-    """
-
-    weeks_df = pd.concat([
-        pd.DataFrame(pd.date_range("2022-01-01", "2022-12-31", freq="W-MON"), columns=["start_date"]),
-        pd.DataFrame(pd.date_range("2022-01-01", "2022-12-31", freq="W-MON"), columns=["end_date"]) + pd.DateOffset(days=6)
-    ], axis=1)
-
-    weeks_df.insert(0, "week_number", weeks_df["start_date"].dt.isocalendar().week)
-
-    # get active weeks that can be selected
-
-    active_weeks = list(filter(lambda x: x <= curr_week, weeks_df["week_number"].tolist()))
-
-    return weeks_df.set_index("week_number"), sorted(active_weeks, reverse=True)
-
-
-@st.cache(hash_funcs={Resource: hash})  # pulled once only
-def get_users(conn):
-    """ Usernames and password for authentication of users
-
-    :param conn: existing connection via google api v4
-    :return: extracted list of users with username, name and password
-    """
-
-    values = (
-        conn.values().get(
-            spreadsheetId=config.SPREADSHEET_ID,
-            range=f"Members!A:C",
-        ).execute()
-    )
-
-    user_df = pd.DataFrame(values["values"]).fillna("")
-    user_df.columns = user_df.iloc[0]
-
-    return user_df[1:]["Name"], user_df[1:].set_index("Username").to_dict("index")  # exclude header row
-
+# -- Update data ---------------------------------------------------------------
 
 def add_entry(conn, row) -> None:
     """ Add entry to dB
@@ -103,14 +63,12 @@ def add_entry(conn, row) -> None:
     :return: extracted list of weeks and active weeks (less than current week)
     """
 
-    values = (
-        conn.values().append(
-            spreadsheetId=config.SPREADSHEET_ID,
-            range=f"{config.SHEET_NAME}!A:F",
-            body=dict(values=row),
-            valueInputOption="USER_ENTERED",
-        ).execute()
-    )
+    conn.values().append(
+        spreadsheetId=config.SPREADSHEET_ID,
+        range=f"{config.SHEET_NAME}!A:F",
+        body=dict(values=row),
+        valueInputOption="USER_ENTERED",
+    ).execute()
 
 
 def get_graph(df, names):
@@ -138,7 +96,8 @@ def get_graph(df, names):
 
     plot_df["Legend"] = np.where(
         (plot_df["Result"].isna()) & (plot_df["Days"] == ""),
-        "Untested", plot_df["Result"]
+        "Untested",
+        plot_df["Result"]
     )
 
     fig = (
@@ -156,50 +115,14 @@ def get_graph(df, names):
     return fig
 
 
-# -- get data (regardless if authentication performed) -------------------------
-
-df = get_data(connect_to_gsheet())
-names, users = get_users(connect_to_gsheet())
-weeks_df, active_weeks = get_weeks()
-
-# -- header setup --------------------------------------------------------------
-
-st.subheader("""COVID-19 self-test declaration tracker""")
-
-with st.expander("Description"):
-    st.write(
-        """
-        **Streamlit dashboard by Adrian Tan**\n
-        *! login using username: 'admin' and password: 'admin' for preview purposes.*
-        
-        - This app records the team's self reported test kit results for COVID-19 (per week).
-        - Each year-week only can have one entry for each uniq. user.
-        - Note: feature to resubmit as an amendment was not implemented.
-        ***
-        """
-    )
-
-    st.text(
-        """
-        Changelog
-        ---
-        [Pending] logic to amend entry rows if a user is resubmitting for a given year and week
-        [Done] Only submits new entries if have not declared by user for a given year-week
-        [Done] Graph now captures users that have not declared status
-        """
-    )
-
-st.write("***")
-
-# -- sidebar setup -------------------------------------------------------------
+# -- Sidebar setup -------------------------------------------------------------
 
 with st.sidebar:
 
-    # -- perform login -------------------------------------------------------------
+    # -- Login -----------------------------------------------------------------
 
     with st.expander("🔒 User Login", expanded=True):
-        username = st.text_input("Username")
-        password = st.text_input("Password")
+        username, password = st.text_input("Username"), st.text_input("Password")
 
     current_user = users.get(username)  # verifies if existing user
 
@@ -207,11 +130,11 @@ with st.sidebar:
         st.info("Key in username & password")
 
     else:
-        if current_user["Password"] if current_user is not None else None == password:
+        if (current_user["Password"] if current_user is not None else None) == password:
             current_user_name = current_user["Name"]
             st.success(f"Logged in as {current_user_name}")
 
-#  --submission form -----------------------------------------------------------
+# -- submission form -----------------------------------------------------------
 
             with st.form(key="annotation"):
                 st.subheader("User Input Function")
@@ -231,7 +154,7 @@ with st.sidebar:
                 with col2:
                     date = st.date_input(
                         "Self Test Date",
-                        max_value=datetime.datetime.now(tz).date(),
+                        max_value=config.today,
                         help="date of self test taken"
                     )
 
@@ -247,11 +170,10 @@ with st.sidebar:
                 submit = st.form_submit_button(label="Submit")
 
             if submit:
+
                 start_date, end_date = list(weeks_df.to_dict("index")[week].values())
 
-                # add entry (or overwrite existing) upon submission
-
-                # if existing, then amend else append
+                # add entry (or overwrite existing) upon submission - if existing, then amend else append
 
                 checker = df.apply(lambda x: f"{x['Year']}-{x['Week']}-{x['Member']}", axis=1).tolist() if not df.empty else [None]
 
@@ -259,7 +181,7 @@ with st.sidebar:
                     add_entry(
                         connect_to_gsheet(),
                         [[
-                            datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M"),
+                            config.now.strftime("%Y-%m-%d %H:%M"),
                             str(date.year),
                             str(week),
                             str(start_date.date()),
@@ -272,58 +194,49 @@ with st.sidebar:
                         ]]
                     )
 
-                else:
-                    pass
-
                 st.success("☑️ Self test results submitted")
 
         else:
             st.error("Incorrect username & password")
 
-# -- body setup ----------------------------------------------------------------
 
-if current_user is None:
-    pass
+# -- Body setup ----------------------------------------------------------------
 
-else:
-    if current_user["Password"] == password:
+if (current_user["Password"] if current_user else None) is not None:
 
-        col1, col2, col3 = st.columns((4, 1, 1))
+    col1, col2, col3 = st.columns((4, 1, 1))
 
-        with col1:
-            select_week = st.select_slider(
-                "Week Number",
-                weeks_df.index.tolist(),
-                value=max(active_weeks),
-                help="filter graph by week number"
-            )
+    with col1:
+        select_week = st.select_slider(
+            "Week Number",
+            weeks_df.index.tolist(),
+            value=max(active_weeks),
+            help="filter graph by week number"
+        )
 
-        with col2:
-            select_year = st.selectbox("Year", [2021, curr_year], index=1)
+    with col2:
+        select_year = st.selectbox("Year", [2021, config.curr_year], index=1)
 
-        with col3:
-            st.write("")
-            st.write("")
-            if st.button("Refresh"):
-                st.experimental_show()
+    with col3:
+        st.write("")
+        st.write("")
+        if st.button("Refresh"):
+            st.experimental_show()
 
-        if df.empty:
-            pass
-        else:
+    if df.empty:
+        pass
 
-            st.altair_chart(
-                get_graph(df, names=names),
-                use_container_width=True
-            )
+    else:
+        st.altair_chart(get_graph(df, names=names), use_container_width=True)
 
-        st.write(f"""### Records *(Source: [Gsheet]({config.GSHEET_URL}))*""")
+    # style table: create non-current week as opague
 
-        # style table: create non-current week as opague
+    st.write(f"""### Records *(Source: [Gsheet]({config.GSHEET_URL}))*""")
 
-        st.dataframe(df.style.apply(
-            lambda s: ((df["Year"] <= curr_year) & (df["Week"] < curr_week))
-            .map({True: "opacity: 20%;", False: ""})
-        ))
+    st.dataframe(df.style.apply(
+        lambda s: ((df["Year"] <= config.curr_year) & (df["Week"] < config.curr_week))
+        .map({True: "opacity: 20%;", False: ""})
+    ))
 
-        with st.expander("Ref. Table: Week Number-Dates"):
-            st.dataframe(weeks_df)
+    with st.expander("Ref. Table: Week Number-Dates"):
+        st.dataframe(weeks_df)
